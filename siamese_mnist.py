@@ -80,25 +80,27 @@ def accuracy(y_true, y_pred):
     '''
     return K.mean(K.equal(y_true, K.cast(y_pred < 0.5, y_true.dtype)))
     
-    
-############# network definition #################################
-base_network = create_base_network(input_shape)
 
-input_a = Input(shape=input_shape)
-input_b = Input(shape=input_shape)
+def get_model():
+    ############# network definition #################################
+    base_network = create_base_network(input_shape)
 
-# because we re-use the same instance `base_network`,
-# the weights of the network
-# will be shared across the two branches
-processed_a = base_network(input_a)
-processed_b = base_network(input_b)
+    input_a = Input(shape=input_shape)
+    input_b = Input(shape=input_shape)
 
-distance = Lambda(euclidean_distance, output_shape=eucl_dist_output_shape)([processed_a, processed_b])
+    # because we re-use the same instance `base_network`,
+    # the weights of the network
+    # will be shared across the two branches
+    processed_a = base_network(input_a)
+    processed_b = base_network(input_b)
 
-model = Model([input_a, input_b], distance)
+    distance = Lambda(euclidean_distance, output_shape=eucl_dist_output_shape)([processed_a, processed_b])
 
-rms = RMSprop()
-model.compile(loss=contrastive_loss, optimizer=rms, metrics=[accuracy])
+    model = Model([input_a, input_b], distance)
+
+    rms = RMSprop()
+    model.compile(loss=contrastive_loss, optimizer=rms, metrics=[accuracy])
+    return model
 
 
 ################ Data generator  ###############################
@@ -179,66 +181,67 @@ class DataGenerator(Sequence): #tf.compat.v2.keras.utils.Sequence
             
         #return keras.utils.to_categorical(y,num_classes=self.n_classes)
         return y
-              
-############## xy data  ###############################              
+ 
+if __name__=='__main__':             
+    ############## xy data  ###############################              
 
-# create training+test positive and negative pairs
-(x_train, y_train), (x_test, y_test) = mnist.load_data()
-x_train = x_train.astype('float32')/255.0
-x_test = x_test.astype('float32')/255.0
+    # create training+test positive and negative pairs
+    (x_train, y_train), (x_test, y_test) = mnist.load_data()
+    x_train = x_train.astype('float32')/255.0
+    x_test = x_test.astype('float32')/255.0
 
-digit_indices = [np.where(y_train == i)[0] for i in range(num_classes)]
-tr_pairs, tr_y = create_pairs(x_train, digit_indices)
+    digit_indices = [np.where(y_train == i)[0] for i in range(num_classes)]
+    tr_pairs, tr_y = create_pairs(x_train, digit_indices)
 
-digit_indices = [np.where(y_test == i)[0] for i in range(num_classes)]
-te_pairs, te_y = create_pairs(x_test, digit_indices)
+    digit_indices = [np.where(y_test == i)[0] for i in range(num_classes)]
+    te_pairs, te_y = create_pairs(x_test, digit_indices)
 
-############ Data generators ############################
-(x_train, y_train), (x_test, y_test) = mnist.load_data()
-train_generator = DataGenerator(x_train, y_train, batch_size = 64,
-                                dim = input_shape,
-                                n_classes=10, 
-                                to_fit=True, shuffle=True)
-val_generator =  DataGenerator(x_test, y_test, batch_size=64, 
-                               dim = input_shape, 
-                               n_classes= 10, 
-                               to_fit=True, shuffle=True)
-                               
-images, labels = next(train_generator)
-#print(images.shape)
-print(labels)
-
-
-
-
-############# fit train ##########################################
-'''
-model.load_weights('siamese_mnist.h5')
-model.fit([tr_pairs[:, 0], tr_pairs[:, 1]], tr_y,
-          batch_size=8,
-          epochs=1,
-          validation_data=([te_pairs[:, 0], te_pairs[:, 1]], te_y))
-model.save('siamese_mnist.h5')
-'''
-############# fit_generator train ################################
-model.load_weights('siamese_mnist.h5')
-
-model.fit_generator(
-        train_generator,
-        epochs=1,
-        validation_data=val_generator)
-model.save('siamese_mnist.h5')
+    ############ Data generators ############################
+    (x_train, y_train), (x_test, y_test) = mnist.load_data()
+    train_generator = DataGenerator(x_train, y_train, batch_size = 64,
+                                    dim = input_shape,
+                                    n_classes=10, 
+                                    to_fit=True, shuffle=True)
+    val_generator =  DataGenerator(x_test, y_test, batch_size=64, 
+                                   dim = input_shape, 
+                                   n_classes= 10, 
+                                   to_fit=True, shuffle=True)
+                                   
+    images, labels = next(train_generator)
+    #print(images.shape)
+    print(labels)
 
 
-######compute final accuracy on training and test sets###########
+    model = get_model()
 
-y_pred = model.predict([tr_pairs[:, 0], tr_pairs[:, 1]])
-tr_acc = compute_accuracy(tr_y, y_pred)
-y_pred = model.predict([te_pairs[:, 0], te_pairs[:, 1]])
-te_acc = compute_accuracy(te_y, y_pred)
+    ############# fit train ##########################################
+    '''
+    model.load_weights('siamese_mnist.h5')
+    model.fit([tr_pairs[:, 0], tr_pairs[:, 1]], tr_y,
+              batch_size=8,
+              epochs=1,
+              validation_data=([te_pairs[:, 0], te_pairs[:, 1]], te_y))
+    model.save('siamese_mnist.h5')
+    '''
+    ############# fit_generator train ################################
+    model.load_weights('siamese_mnist.h5')
 
-print('* Accuracy on training set: %0.2f%%' % (100 * tr_acc))
-print('* Accuracy on test set: %0.2f%%' % (100 * te_acc))
+    model.fit_generator(
+            train_generator,
+            epochs=1,
+            validation_data=val_generator)
+    model.save('siamese_mnist.h5')
+
+
+    ######compute final accuracy on training and test sets###########
+
+    y_pred = model.predict([tr_pairs[:, 0], tr_pairs[:, 1]])
+    tr_acc = compute_accuracy(tr_y, y_pred)
+    y_pred = model.predict([te_pairs[:, 0], te_pairs[:, 1]])
+    te_acc = compute_accuracy(te_y, y_pred)
+
+    print('* Accuracy on training set: %0.2f%%' % (100 * tr_acc))
+    print('* Accuracy on test set: %0.2f%%' % (100 * te_acc))
 
 
 
